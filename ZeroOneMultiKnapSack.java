@@ -8,9 +8,6 @@ public class ZeroOneMultiKnapSack {
 	private static class MaxWeightForIndex {
 		int[] weights;
 		int idx;
-
-		MaxWeightForIndex(int[] weights, int idx) {
-		}
 	}
 
 	public static boolean isArraySorted(int[] arr) {
@@ -55,7 +52,7 @@ public class ZeroOneMultiKnapSack {
 		int[] tmpArray = new int[remainingWeights.length];
 		System.arraycopy(remainingWeights, 0, tmpArray, 0, remainingWeights.length);
 
-		MaxWeightForIndex maxWeightForIndex = new MaxWeightForIndex(tmpArray, idx);
+		MaxWeightForIndex maxWeightForIndex = new MaxWeightForIndex();
 		if (maxVals.containsKey(maxWeightForIndex)) {
 			return maxVals.get(maxWeightForIndex);
 		}
