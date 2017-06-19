@@ -1,0 +1,2 @@
+To remove the extra empty rows: %s/\([0-9]\)$\n^$/\1/g
+to replace the empty rows with 0: %s/^$/0/g
