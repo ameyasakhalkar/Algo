@@ -58,14 +58,14 @@ public class ZeroOneMultiKnapSack {
 	 * change is made.
 	 *
 	 * @param	arr	Input array of integers
-	 * @param	val	value to be subtracted from the first larger-or-equal element
-	 * @return	index of the element where val was subtracted from if the subtraction happened, 
+	 * @param	weight	weight to be subtracted from the first larger-or-equal element
+	 * @return	index of the element where weight was subtracted from if the subtraction happened, 
 	 *			length of the array otherwise
 	 */
-	public static int remainingWeightsMinusGiven(int[] arr, int val) {
+	public static int subtractGivenWeightFromRemainingWeights(int[] arr, int weight) {
 		for (int idx = 0; idx < arr.length; idx++) {
-			if (val <= arr[idx]) {
-				arr[idx] -= val;
+			if (weight <= arr[idx]) {
+				arr[idx] -= weight;
 				return idx;
 			}
 		}
@@ -76,34 +76,28 @@ public class ZeroOneMultiKnapSack {
 	 * Returns the maximum value that can be obtained by picking up items from the _remaining_ subarray, subject
 	 * to the remaining weights available.
 	 *
-	 * @param	weights		List of weights of items from which a subset is to be picked up to maximize the value
-	 * @param	remainingWeights	List of remaining weights available in the buckets/knapsacks
+	 * @param	itemWeights		List of weights of items from which a subset is to be picked up to maximize the value
+	 * @param	remainingBucketWeights	List of remaining weights available in the buckets/knapsacks
 	 * @param	idx		Starting index of the sub-array for which maximum value is to be identified
 	 * @param	values		List of values of items from which a subset is to be picked up to maximize the value
 	 * @param	maxVals		A map of <list of remaining weights, values>. Used as memoization to avoid repeating the same sub-problem
 	 */
-	public static int maxVal(int[] weights, int[] remainingWeights, int idx, int[] values, Map<MaxWeightForIndex, Integer> maxVals) {
-		if (idx == weights.length) {
+	public static int maxVal(int[] itemWeights, int[] remainingBucketWeights, int idx, int[] values, Map<MaxWeightForIndex, Integer> maxVals) {
+		if (idx == itemWeights.length) {
 			return 0;
 		}
 
-		// For all the permutations of a given combination of remainingWeights, and the given index into the array of items,
+		// For all the permutations of a given combination of remainingBucketWeights, and the given index into the array of items,
 		// the max values are going to be the same.
 		//
 		// e.g. the max value with remaining weights of <5, 50> with index 0, and remaining weights of <50, 5> with index 0
 		// are going to be the same. To avoid repeatedly solving the same sub-problem (with different permutations of the same
 		// combination), memoize/query with only the combination with non-descending order of remaining weights (i.e. <5, 50> here)
-		if (!isArraySorted(remainingWeights)) {
-			Arrays.sort(remainingWeights);
+		if (!isArraySorted(remainingBucketWeights)) {
+			Arrays.sort(remainingBucketWeights);
 		}
 
-		// this function makes (max) 2 calls to itself, once by considering the current element and other by not 
-		// considering it. remainingWeights array is modified in-place for the first call. To avoid messing up
-		// with the other call, copy remainingWeights into a temporary array before the recursive calls
-		int[] tmpArray = new int[remainingWeights.length];
-		System.arraycopy(remainingWeights, 0, tmpArray, 0, remainingWeights.length);
-
-		MaxWeightForIndex maxWeightForIndex = new MaxWeightForIndex(remainingWeights, idx);
+		MaxWeightForIndex maxWeightForIndex = new MaxWeightForIndex(remainingBucketWeights, idx);
 		if (maxVals.containsKey(maxWeightForIndex)) {
 			return maxVals.get(maxWeightForIndex);
 		}
@@ -113,12 +107,15 @@ public class ZeroOneMultiKnapSack {
 
 		// Current element can be selected only if at least one bucket has remaining weight at least as big as the current
 		// element's weight
-		if (isSmallerThanOrEqualToAnyOne(tmpArray, weights[idx])) {
-			modifiedIdx = remainingWeightsMinusGiven(tmpArray, weights[idx]);
-			candidateValueWithCurrent = values[idx] + maxVal(weights, tmpArray, idx + 1, values, maxVals);
+		if (isSmallerThanOrEqualToAnyOne(remainingBucketWeights, itemWeights[idx])) {
+			modifiedIdx = subtractGivenWeightFromRemainingWeights(remainingBucketWeights, itemWeights[idx]);
+			candidateValueWithCurrent = values[idx] + maxVal(itemWeights, remainingBucketWeights, idx + 1, values, maxVals);
+
+			// Replace the value back in the bucket weight array
+			remainingBucketWeights[modifiedIdx] += itemWeights[idx];
 		}
 
-		int candidateValueWithOutCurrent = maxVal(weights, remainingWeights, idx + 1, values, maxVals);
+		int candidateValueWithOutCurrent = maxVal(itemWeights, remainingBucketWeights, idx + 1, values, maxVals);
 		maxVals.put(maxWeightForIndex, new Integer((candidateValueWithCurrent > candidateValueWithOutCurrent) ? 
 			candidateValueWithCurrent : candidateValueWithOutCurrent));
 		return maxVals.get(maxWeightForIndex);
@@ -138,15 +135,15 @@ public class ZeroOneMultiKnapSack {
 		int n = s.nextInt();
 		int k = s.nextInt();
 
-		int[] weights = new int[n];
-		int[] remainingWeights = new int[k];
+		int[] itemWeights = new int[n];
+		int[] remainingBucketWeights = new int[k];
 		int[] values = new int[n];
 		for (int idx = 0; idx < n; idx++) {
-			weights[idx] = s.nextInt();
+			itemWeights[idx] = s.nextInt();
 		}	
 
 		for (int idx = 0; idx < k; idx++) {
-			remainingWeights[idx] = s.nextInt();
+			remainingBucketWeights[idx] = s.nextInt();
 		}
 
 		for (int idx = 0; idx < n; idx++) {
@@ -154,6 +151,6 @@ public class ZeroOneMultiKnapSack {
 		}
 
 		Map<MaxWeightForIndex, Integer> maxVals = new HashMap<MaxWeightForIndex, Integer>();
-		System.out.println("max weight:"+ maxVal(weights, remainingWeights, 0, values, maxVals));
+		System.out.println("max weight:"+ maxVal(itemWeights, remainingBucketWeights, 0, values, maxVals));
 	}
 }
