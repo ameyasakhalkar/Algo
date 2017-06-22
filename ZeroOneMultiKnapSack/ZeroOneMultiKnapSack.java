@@ -1,22 +1,38 @@
 import java.util.Scanner;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class ZeroOneMultiKnapSack {
  	private static final int BYTE_MASK = 0xFFFFFFF8;
 
 	/**
-	 * Class used to keep track of the maximum value that can be obtained with given sequence of
-	 * available weights (of items) and 
+	 * Class used as the key to keep track of the maximum value that can be obtained with given sequence of
+	 * available weights (of items) and the mapping of which items to be kept into which buckets/sacks
 	 */
-	private static class MaxWeightForIndex {
+	private static class MaxWeightForIndexKey {
 		int[] weights;
 		int idx;
 
-		MaxWeightForIndex(int[] weights, int idx) {
+		MaxWeightForIndexKey(int[] weights, int idx) {
 			this.weights = weights;
 			this.idx = idx;
+		}
+	}
+
+	/**
+	 * Class used as the value to keep track of the maximum value that can be obtained with given sequence of
+	 * available weights (of items) and the mapping of which items to be kept into which buckets/sacks
+	 */
+	private static class MaxWeightForIndexValue {
+		Map<Integer, List<Integer>> selectedItemsPerBucketMap;
+		int maxValue;
+
+		MaxWeightForIndexValue(Map<Integer, List<Integer>> selectedItemsPerBucketMap, int maxValue) {
+			this.selectedItemsPerBucketMap = selectedItemsPerBucketMap;
+			this.maxValue = maxValue;
 		}
 	}
 
@@ -53,17 +69,18 @@ public class ZeroOneMultiKnapSack {
 	}
 
 	/**
-	 * Subtracts the given value from the first element of the input array that is at least as 
-	 * big as the value. If all elements in the array are smaller than the given value, then no
+	 * Subtracts the given value from the first element of the input array starting from the given index that is at least as 
+	 * big as the value. If all elements in the array starting from the given index are smaller than the given value, then no
 	 * change is made.
 	 *
 	 * @param	arr	Input array of integers
 	 * @param	weight	weight to be subtracted from the first larger-or-equal element
+	 * @param	startIndex	Index in 'arr' from which to look for available weight
 	 * @return	index of the element where weight was subtracted from if the subtraction happened, 
 	 *			length of the array otherwise
 	 */
-	public static int subtractGivenWeightFromRemainingWeights(int[] arr, int weight) {
-		for (int idx = 0; idx < arr.length; idx++) {
+	public static int subtractGivenWeightFromRemainingWeights(int[] arr, int weight, int startIndex) {
+		for (int idx = startIndex; idx < arr.length; idx++) {
 			if (weight <= arr[idx]) {
 				arr[idx] -= weight;
 				return idx;
@@ -81,10 +98,13 @@ public class ZeroOneMultiKnapSack {
 	 * @param	idx		Starting index of the sub-array for which maximum value is to be identified
 	 * @param	values		List of values of items from which a subset is to be picked up to maximize the value
 	 * @param	maxVals		A map of <list of remaining weights, values>. Used as memoization to avoid repeating the same sub-problem
+	 * @return	An object containing the maximum value that can be obtained by placing the items from the subarray starting 'idx'
+	 *			in the buckets/sacks with remaining weights, AND the mapping from the buckets/sacks to the list of selected items
 	 */
-	public static int maxVal(int[] itemWeights, int[] remainingBucketWeights, int idx, int[] values, Map<MaxWeightForIndex, Integer> maxVals) {
+	public static MaxWeightForIndexValue maxVal(int[] itemWeights, int[] remainingBucketWeights, int idx, int[] values, 
+			Map<MaxWeightForIndexKey, MaxWeightForIndexValue> maxVals, boolean debug) {
 		if (idx == itemWeights.length) {
-			return 0;
+			return null;
 		}
 
 		// For all the permutations of a given combination of remainingBucketWeights, and the given index into the array of items,
@@ -93,32 +113,92 @@ public class ZeroOneMultiKnapSack {
 		// e.g. the max value with remaining weights of <5, 50> with index 0, and remaining weights of <50, 5> with index 0
 		// are going to be the same. To avoid repeatedly solving the same sub-problem (with different permutations of the same
 		// combination), memoize/query with only the combination with non-descending order of remaining weights (i.e. <5, 50> here)
+		int[] tmpRemainingBuckets = remainingBucketWeights;
 		if (!isArraySorted(remainingBucketWeights)) {
-			Arrays.sort(remainingBucketWeights);
+			tmpRemainingBuckets = new int[remainingBucketWeights.length];
+			System.arraycopy(remainingBucketWeights, 0, tmpRemainingBuckets, 0, remainingBucketWeights.length);
+			Arrays.sort(tmpRemainingBuckets);
 		}
 
-		MaxWeightForIndex maxWeightForIndex = new MaxWeightForIndex(remainingBucketWeights, idx);
-		if (maxVals.containsKey(maxWeightForIndex)) {
-			return maxVals.get(maxWeightForIndex);
+		MaxWeightForIndexKey maxWeightForIndexKey = new MaxWeightForIndexKey(tmpRemainingBuckets, idx);
+		if (maxVals.containsKey(maxWeightForIndexKey)) {
+			return maxVals.get(maxWeightForIndexKey);
 		}
 
 		int candidateValueWithCurrent = 0;
+		int maxCandidateValueWithCurrent = 0;
 		int modifiedIdx = -1;
+		MaxWeightForIndexValue maxWeightForIndexValue = null;
+
+		// A list of maps of <bucket Id, list of item indexes selected> where each outer list corresponds to 
+		// each of the buckets having sufficient weight to accommodate the current item
+		Map<Integer, List<Integer>> selectedItemsPerBucketMapWithOutCurrent = new HashMap<Integer, List<Integer>>();
+		Map<Integer, List<Integer>> selectedItemsPerBucketMapWithCurrentHavingMaxValue = null;
+		if (debug) {
+			System.out.println("idx: " + idx + ", value:"+ itemWeights[idx]);
+		}
 
 		// Current element can be selected only if at least one bucket has remaining weight at least as big as the current
 		// element's weight
 		if (isSmallerThanOrEqualToAnyOne(remainingBucketWeights, itemWeights[idx])) {
-			modifiedIdx = subtractGivenWeightFromRemainingWeights(remainingBucketWeights, itemWeights[idx]);
-			candidateValueWithCurrent = values[idx] + maxVal(itemWeights, remainingBucketWeights, idx + 1, values, maxVals);
+			while (modifiedIdx < remainingBucketWeights.length) {
+				modifiedIdx = subtractGivenWeightFromRemainingWeights(remainingBucketWeights, itemWeights[idx], modifiedIdx + 1);
+				if (modifiedIdx == remainingBucketWeights.length) {
+					break;
+				}
 
-			// Replace the value back in the bucket weight array
-			remainingBucketWeights[modifiedIdx] += itemWeights[idx];
+				MaxWeightForIndexValue value = maxVal(itemWeights, remainingBucketWeights, idx + 1, values, maxVals, debug);
+				candidateValueWithCurrent = values[idx] + (value == null ? 0 : value.maxValue);
+				Map<Integer, List<Integer>> selectedItemsPerBucketMapWithCurrent = new HashMap<Integer, List<Integer>>();
+
+				if (value != null) {
+					selectedItemsPerBucketMapWithCurrent.putAll(value.selectedItemsPerBucketMap);
+				}
+				List<Integer> listOfItemsInCurrentBucket = selectedItemsPerBucketMapWithCurrent.get(modifiedIdx);
+				if (listOfItemsInCurrentBucket == null) {
+					listOfItemsInCurrentBucket = new ArrayList<Integer>();
+					selectedItemsPerBucketMapWithCurrent.put(modifiedIdx, listOfItemsInCurrentBucket);
+				}
+				listOfItemsInCurrentBucket.add(idx);
+
+				if (candidateValueWithCurrent > maxCandidateValueWithCurrent) {
+					maxCandidateValueWithCurrent = candidateValueWithCurrent;
+					selectedItemsPerBucketMapWithCurrentHavingMaxValue = selectedItemsPerBucketMapWithCurrent;
+				}
+				if (debug) {
+					System.out.println("idx: " + idx + ", value:"+ itemWeights[idx] + ", modifiedIdx:" + modifiedIdx +", candidateValueWithCurrent:"+candidateValueWithCurrent + ", remainingBucketWeights:"+toArray(remainingBucketWeights));
+				}
+
+				// Replace the value back in the bucket weight array
+				remainingBucketWeights[modifiedIdx] += itemWeights[idx];
+			}
 		}
 
-		int candidateValueWithOutCurrent = maxVal(itemWeights, remainingBucketWeights, idx + 1, values, maxVals);
-		maxVals.put(maxWeightForIndex, new Integer((candidateValueWithCurrent > candidateValueWithOutCurrent) ? 
-			candidateValueWithCurrent : candidateValueWithOutCurrent));
-		return maxVals.get(maxWeightForIndex);
+		MaxWeightForIndexValue value = maxVal(itemWeights, remainingBucketWeights, idx + 1, values, maxVals, debug);
+		int candidateValueWithOutCurrent = (value == null ? 0 : value.maxValue);
+		if (value != null) {
+			selectedItemsPerBucketMapWithOutCurrent.putAll(value.selectedItemsPerBucketMap);
+		}
+
+		if (maxCandidateValueWithCurrent > candidateValueWithOutCurrent) {
+			maxWeightForIndexValue = new MaxWeightForIndexValue(selectedItemsPerBucketMapWithCurrentHavingMaxValue, maxCandidateValueWithCurrent);
+		} else {
+			maxWeightForIndexValue = new MaxWeightForIndexValue(selectedItemsPerBucketMapWithOutCurrent, candidateValueWithOutCurrent);
+		}
+
+		if (debug) {
+			System.out.println("idx: " + idx + ", value:"+ itemWeights[idx] +", candidateValueWithOutCurrent:"+candidateValueWithOutCurrent);
+		}
+		maxVals.put(maxWeightForIndexKey, maxWeightForIndexValue);
+		return maxWeightForIndexValue;
+	}
+
+	private static String toArray(int[] arr) {
+		StringBuffer sb = new StringBuffer();
+		for (int index = 0; index < arr.length; index++) {
+			sb.append(arr[index]).append(", ");
+		}
+		return sb.toString();
 	}
 
 	public static boolean isBitSet(int[] arr, int n) {
@@ -131,6 +211,11 @@ public class ZeroOneMultiKnapSack {
 	}
 
 	public static void main(String[] args) {
+		boolean debug = false;
+		if (args.length > 0) {
+			debug = Boolean.parseBoolean(args[0]);
+		}
+
 		Scanner s = new Scanner(System.in);
 		int n = s.nextInt();
 		int k = s.nextInt();
@@ -150,7 +235,16 @@ public class ZeroOneMultiKnapSack {
 			values[idx] = s.nextInt();
 		}
 
-		Map<MaxWeightForIndex, Integer> maxVals = new HashMap<MaxWeightForIndex, Integer>();
-		System.out.println("max weight:"+ maxVal(itemWeights, remainingBucketWeights, 0, values, maxVals));
+		Map<MaxWeightForIndexKey, MaxWeightForIndexValue> maxVals = new HashMap<MaxWeightForIndexKey, MaxWeightForIndexValue>();
+		MaxWeightForIndexValue value = maxVal(itemWeights, remainingBucketWeights, 0, values, maxVals, debug);
+		System.out.println("max value:"+ value.maxValue + ",\nMapping of buckets/sacks to the indexes of items selected:");
+
+		for (Map.Entry<Integer, List<Integer>> entry : value.selectedItemsPerBucketMap.entrySet()) {
+			System.out.print("Bucket id " + entry.getKey() + " : ");
+			for (Integer index : entry.getValue()) {
+				System.out.print(index + ", ");
+			}
+			System.out.println();
+		}
 	}
 }
