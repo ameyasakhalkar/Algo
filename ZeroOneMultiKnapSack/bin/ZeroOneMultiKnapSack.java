@@ -98,6 +98,7 @@ public class ZeroOneMultiKnapSack {
 	 * @param	idx		Starting index of the sub-array for which maximum value is to be identified
 	 * @param	values		List of values of items from which a subset is to be picked up to maximize the value
 	 * @param	maxVals		A map of <list of remaining weights, values>. Used as memoization to avoid repeating the same sub-problem
+	 * @param	debug		A flag indicating whether to display debug logs to STDOUT
 	 * @return	An object containing the maximum value that can be obtained by placing the items from the subarray starting 'idx'
 	 *			in the buckets/sacks with remaining weights, AND the mapping from the buckets/sacks to the list of selected items
 	 */
